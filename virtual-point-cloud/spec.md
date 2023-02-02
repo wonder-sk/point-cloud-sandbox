@@ -1,5 +1,7 @@
 # Virtual Point Cloud (VPC)
 
+## Purpose
+
 Draft specification for a file format that groups multiple point cloud files to be treated as a single dataset.
 
 Inspired by GDAL's VRTs and PDAL's tindex.
@@ -7,65 +9,109 @@ Inspired by GDAL's VRTs and PDAL's tindex.
 Goals:
 - load VPC in QGIS as a single point cloud layer (rather than each file as a separate map layer)
 - run processing tools on a VPC as input
+- simple format that's easy to read/write
+- allow referencing both local and remote datasets, especially LAS/LAZ/COPC files
 
 Non-goals:
-- ?
+- support other kinds of data than (georeferenced) point clouds
+- STAC replacement/competitor
 
 ## File format
 
-A vpc is a GeoPackage file with .vpc extension (to allow easy format recognition based on the extension).
+A virtual point cloud uses JSON file format as described in [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259).
 
-Why GeoPackage:
+It uses `.vpc` extension (to allow easy format recognition based on the extension).
+
+Why JSON:
 - a single file
-- standardized and well supported by tools (OGR, QGIS, ...)
-- allows multiple tables
-- supports various coordinate reference systems
-- efficient storage / querying of data
+- read/write support by virtually any language (no need for extra libs)
+- human readable
+- easy to store optional extra metadata if needed
 
-## Tables
+## Structure
 
-### files
+### `vpc`
 
-The main table that references individual files in the dataset.
+Specifies version number of the specification.
 
-- polygon geometry (or multi-polygon) - file boundary - either a simple rectangle or more detailed shape
-- attributes:
-  - filename - relative or absolute path 
-  - point count
+```json
+{
+  "vpc": "1.0.0"
+}
+```
 
-### metadata
+### `files`
 
-Key-value store for any kind of required and optional metadata.
+Contains an array of objects with details about referenced point cloud files. Each object contains the following attributes:
 
-- non-spatial table
-- attributes:
-  - key (string)
-  - value (string)
+- `filename` - string with path to the file. It may be absolute or relative path, or http(s) URL to a remote file
+- `count` - total number of points in the file
+- `bbox` - an array with 6 elements, containing 3D bounding box of the data: `[xmin, ymin, zmin, xmax, ymax, zmax]`
 
-Required:
-- ?
+Example:
 
-Optional:
-- stats - JSON with basic stats for each dimension
+```json
+{
+  "files": [
+    {
+      "filename": "./file1.laz",
+      "count": 17063621,
+      "bbox": [
+        376625.001,
+        5440689.0,
+        625.741,
+        377249.999,
+        5441419.999,
+        869.878
+      ]
+    },
+    {
+      "filename": "./file2.laz",
+      "count": 21581101,
+      "bbox": [
+        376575.075,
+        5441420.0,
+        634.271,
+        377249.999,
+        5442419.999,
+        965.015
+      ]
+    }
+  ]
+}
+```
 
-### overviews
+### `metadata`
 
-An optional table that lists thinned/merged(?) versions of the raw data - this may be useful for viewers to display the point cloud when zoomed out a lot (the same idea as with overviews of raster layers).
+Contains metadata about the dataset. Required attributes:
 
-- polygon geometry (or multi-polygon)
-- attributes:
-  - filename
-  - point count
-  - resolution / spacing / scale / ? - to give viewer information when to use the overview file
-  
-## Details
+- `crs` - value is a string representing dataset's coordinate reference system in well-known text (WKT) format. Empty string if CRS is unknown, `_mix_` in case of multiple coordinate reference systems in a single dataset.
 
-- referenced files should always have the same CRS
 
-## To do
+TODO:
+- info about attributes?
+- scaling of coordinates?
 
-- dealing with remote files (?)
-- other formats than just LAS/LAZ/COPC files (and implications?)
+### `stats` (optional)
+
+TODO: JSON with stats on different attributes of points.
+
+Useful for client software to quickly identify valid ranges of data for each attribute.
+
+### `boundary` (optional)
+
+TODO: GeoJSON of true boundary of each referenced file (a polygon or multi-polygon geometry).
+
+Useful for client software to give user a better understanding of the actual area covered.
+
+### `overviews` (optional)
+
+TODO: a list of files just like in the `files` structure defined above, but in addition to that, each file has `spacing` attribute with an estimated spacing between points. A single area may be covered by multiple overview files with different spacing.
+
+It is assumed that overviews are thinned and merged versions of the original point cloud data.
+
+Useful for client software to show preview of the point cloud when zoomed out, without having to open all individual files and only rely on overviews
+(the same idea as with overviews of raster layers).
 
 
 ## Alternatives Considered
