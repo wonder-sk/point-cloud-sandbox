@@ -27,6 +27,8 @@ is impractical for our use case as we strongly prefer to have the whole virtual 
 
 We use `.vpc` extension (to allow easy format recognition based on the extension).
 
+Normally a virtual point cloud file will not provide any links to other STAC entities (e.g. to a parent, to a root or to self) because often it will be created ad-hoc.
+
 Why STAC:
 - it is a good fit into the larger ecosystem of data catalogs, avoiding creation of a new format
 - supported natively by PDAL as well (readers.stac)
