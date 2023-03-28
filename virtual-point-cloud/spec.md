@@ -14,107 +14,42 @@ Goals:
 
 Non-goals:
 - support other kinds of data than (georeferenced) point clouds
-- STAC replacement/competitor
 
 ## File format
 
-A virtual point cloud uses JSON file format as described in [RFC 8259](https://www.rfc-editor.org/rfc/rfc8259).
+We are using [STAC API ItemCollection](https://github.com/radiantearth/stac-api-spec/blob/main/fragments/itemcollection/README.md) as the file format and expecting these STAC extensions:
+ - [pointcloud](https://github.com/stac-extensions/pointcloud/)
+ - [projection](https://github.com/stac-extensions/projection/)
 
-It uses `.vpc` extension (to allow easy format recognition based on the extension).
+Note: ItemCollection not the same thing as a [STAC Collection](https://github.com/radiantearth/stac-spec/blob/master/collection-spec/README.md). An ItemCollection is essentially a single JSON file representing a GeoJSON FeatureCollection containing STAC Items. A STAC Collection is also a JSON file,
+but with a different structure and extra metadata, but more importantly, it only links to other standalone JSON files (STAC items) which
+is impractical for our use case as we strongly prefer to have the whole virtual point cloud definition in a single file (for easy manipulation).
 
-Why JSON:
-- a single file
-- read/write support by virtually any language (no need for extra libs)
-- human readable
-- easy to store optional extra metadata if needed
+We use `.vpc` extension (to allow easy format recognition based on the extension).
 
-## Structure
+Why STAC:
+- it is a good fit into the larger ecosystem of data catalogs, avoiding creation of a new format
+- supported natively by PDAL as well (readers.stac)
+- search endpoint on STAC API servers returns the same ItemCollection that we use, so a search result can be fed directly as input
+- the ItemCollection file is an ordinary GeoJSON and other clients can consume it (to at least show boundaries of individual files)
 
-### `vpc`
+### Coordinate Reference Systems (CRS)
 
-Specifies version number of the specification.
+Each referenced file can have its own CRS and it is defined through the "projection" STAC extension - either using `proj:epsg` or `proj:wkt2` or `proj:projjson`. It is recommended that a single virtual point cloud only references files in the same CRS.
 
-```json
-{
-  "vpc": "1.0.0"
-}
-```
+### Statistics
 
-### `files`
+The STAC pointcloud extension defines optional `pc:statistics` entry with statistics for each attribute. There is a limitation that currently it does not define how to store distinct values where it makes sense and their counts (e.g. Classification attribute) - see https://github.com/stac-extensions/pointcloud/issues/5.
 
-Contains an array of objects with details about referenced point cloud files. Each object contains the following attributes:
+### Boundaries
 
-- `filename` - string with path to the file. It may be absolute or relative path, or http(s) URL to a remote file
-- `count` - total number of points in the file
-- `bbox` - an array with 6 elements, containing 3D bounding box of the data: `[xmin, ymin, zmin, xmax, ymax, zmax]`
+The format requires that boundaries of referenced files are defined in WGS 84 (since GeoJSON requires that) - either as a simple 2D or 3D bounding box or as a boundary geometry (polygon / multi-polygon). In addition to that, the "projection" STAC extension allows that the bounding box or boundary geometry can be specified in native coordinate reference system - this is strongly recommended and if `proj:bbox` or `proj:geometry` are present, they will be used instead of their WGS 84 equivalents.
 
-Example:
+### Overviews (optional)
 
-```json
-{
-  "files": [
-    {
-      "filename": "./file1.laz",
-      "count": 17063621,
-      "bbox": [
-        376625.001,
-        5440689.0,
-        625.741,
-        377249.999,
-        5441419.999,
-        869.878
-      ]
-    },
-    {
-      "filename": "./file2.laz",
-      "count": 21581101,
-      "bbox": [
-        376575.075,
-        5441420.0,
-        634.271,
-        377249.999,
-        5442419.999,
-        965.015
-      ]
-    }
-  ]
-}
-```
-
-### `metadata`
-
-Contains metadata about the dataset. Required attributes:
-
-- `crs` - value is a string representing dataset's coordinate reference system in well-known text (WKT) format. Empty string if CRS is unknown, `_mix_` in case of multiple coordinate reference systems in a single dataset.
-
-
-TODO:
-- info about attributes?
-- scaling of coordinates?
-
-### `stats` (optional)
-
-TODO: JSON with stats on different attributes of points.
-
-Useful for client software to quickly identify valid ranges of data for each attribute.
-
-### `boundary` (optional)
-
-TODO: GeoJSON of true boundary of each referenced file (a polygon or multi-polygon geometry).
-
-Useful for client software to give user a better understanding of the actual area covered.
-
-### `overviews` (optional)
-
-TODO: a list of files just like in the `files` structure defined above, but in addition to that, each file has `spacing` attribute with an estimated spacing between points. A single area may be covered by multiple overview files with different spacing.
-
-It is assumed that overviews are thinned and merged versions of the original point cloud data.
-
-Useful for client software to show preview of the point cloud when zoomed out, without having to open all individual files and only rely on overviews
+Overviews are useful for client software to show preview of the point cloud when zoomed out, without having to open all individual files and only rely on overviews
 (the same idea as with overviews of raster layers).
 
+TODO: how to define overviews? We need a list of files just like in the `assets` structure of STAC items, but in addition to that, each file has a flag it is overview, and it needs a `spacing` attribute with an estimated spacing between points. A single area may be covered by multiple overview files with different spacing.
 
-## Alternatives Considered
-
-- STAC - it would require a directory of JSON files (one JSON file per LAS/LAZ/COPC file) which is impractical for our use case. Single-file STAC encoding deprecated: https://github.com/stac-extensions/single-file-stac
-  - should be possible to have a relatively simple 1:1 conversion between VPC and STAC formats if needed
+It is assumed that overviews are thinned and merged versions of the original point cloud data.
